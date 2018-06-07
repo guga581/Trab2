@@ -1,6 +1,6 @@
-#include "../include/t2fs.h"
-#include "../include/bitmap2.h"
-#include "../include/apidisk.h"
+#include <t2fs.h>
+#include <bitmap2.h>
+#include <apidisk.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,9 +18,10 @@ typedef struct {
 
 int first_call = 1;
 t_superbloco superbloco;
-t_inode current_directory;
+t_record current_directory;
 open_file* open_files[MAX_OPENED_FILES];
 int first_inode, first_free_block_bitmap, first_free_inode_bitmap;
+DWORD buffer_singleIndPtr[256/sizeof(DWORD)];
 
 void initialize()
 {
@@ -47,18 +48,17 @@ void initialize()
     first_free_block_bitmap = superbloco.superblockSize;
     first_free_inode_bitmap = first_free_block_bitmap + superbloco.freeBlocksBitmapSize;
     first_inode = first_free_inode_bitmap + superbloco.freeInodeBitmapSize;
-    read_sector(first_inode*superbloco.blockSize, buffer);
-    strncpy((char*)&current_directory, buffer, sizeof(t_inode));
 
-    printf("blocksFileSize = %d\n", current_directory.blocksFileSize);
-    printf("bytesFileSize = %d\n", current_directory.bytesFileSize);
-    printf("dataPtr[0] = %x\n", current_directory.dataPtr[0]);
-    printf("dataPtr[1] = %x\n", current_directory.dataPtr[1]);
-    printf("singleIndPtr = %x\n", current_directory.singleIndPtr);
-    printf("doubleIndPtr = %x\n\n", current_directory.doubleIndPtr);
+    current_directory.TypeVal = TYPEVAL_DIRETORIO;
+    strcpy(current_directory.name, ".");
+    current_directory.inodeNumber = 0;
 
     for(i = 0; i < MAX_OPENED_FILES; i++){
         open_files[i] = NULL;
+    }
+
+    for(i = 0; i < 256 / sizeof(DWORD); i++){
+        buffer_singleIndPtr[i] = INVALID_PTR;
     }
 
     first_call = 0;
@@ -74,10 +74,9 @@ int write_inode(t_inode new_inode){
     int first_free_inode = searchBitmap2 (0,0);
     if(first_inode == -1)
         return -1;
-    sector = (first_inode + first_free_inode / 8)* superbloco.blockSize; // 8 is the number of inodes per sector
+    sector = (first_inode + first_free_inode ) * superbloco.blockSize; // 8 is the number of inodes per sector
     read_sector(sector, buffer);
-    printf("%d\n", (first_free_inode));
-    strncpy(buffer+(first_free_inode % 8)*32, (char*) &new_inode, sizeof(t_inode));
+    memcpy(buffer+(first_free_inode % 8)*32, (char*) &new_inode, sizeof(t_inode));
     write_sector(sector, buffer);
 
     return first_free_inode;
@@ -100,9 +99,6 @@ int identify2 (char *name, int size)
     if(size < strlen(names))
         return -1;
     return 0;
-
-
-
 }
 
 int next_free_handle(){
@@ -114,18 +110,157 @@ int next_free_handle(){
     return -1;
 }
 
+int allocate_new_block(){
+    int first_free_block = searchBitmap2 (1,0);
+    printf("Block %d allocated\n", first_free_block);
+    return first_free_block;
+}
+
+int find_first_record_slot(t_record* sector_of_records){
+    int i;
+    for(i = 0; i<256/sizeof(t_record); i++){
+        if(sector_of_records[i].TypeVal == TYPEVAL_INVALIDO){
+            return i;
+        }
+        printf("%s\n", sector_of_records[i].name);
+
+    }
+    return -1;
+}
+
+// TODO: Test if it works with more than 72 files in the same directory
+
+int write_record(t_inode* directory, t_record new_record){
+    t_record sector_of_records[256/sizeof(t_record)];
+    DWORD single_indirection_pointers[256/sizeof(DWORD)], double_indirection_pointers[256/sizeof(DWORD)];
+    int i, j, next_free_record = -1;
+
+
+    if(directory->dataPtr[0] == INVALID_PTR){
+        directory->dataPtr[0] = allocate_new_block();
+        setBitmap2(1,directory->dataPtr[0], 1);
+        //update_inode(directory)
+    }
+    read_sector(directory->dataPtr[0]*superbloco.blockSize, (char*) &sector_of_records);
+
+    next_free_record = find_first_record_slot(sector_of_records);
+
+    if(next_free_record != -1){
+        printf("Saved in dataPtr[0]\n");
+        sector_of_records[next_free_record] = new_record;
+        write_sector(directory->dataPtr[0]*superbloco.blockSize, (char*)&sector_of_records);
+        setBitmap2(1,directory->dataPtr[0], 1);
+        return 1;
+    }
+
+    /*******************************************************************************************************/
+
+    if(directory->dataPtr[1] == INVALID_PTR){
+        directory->dataPtr[1] = allocate_new_block();
+        setBitmap2(1,directory->dataPtr[1], 1);
+        //update_inode(directory)
+    }
+    read_sector(directory->dataPtr[1]*superbloco.blockSize, (char*) &sector_of_records);
+
+    next_free_record = find_first_record_slot(sector_of_records);
+
+    if(next_free_record != -1){
+        printf("Saved in dataPtr[1]\n");
+        sector_of_records[next_free_record] = new_record;
+        write_sector(directory->dataPtr[1]*superbloco.blockSize, (char*)&sector_of_records);
+        printf("%d\n", setBitmap2(1,directory->dataPtr[1], 1));
+        return 1;
+    }
+
+    /*******************************************************************************************************/
+    if(directory->singleIndPtr == INVALID_PTR){
+        printf("directory->singleIndPtr == INVALID_PTR\n");
+        directory->singleIndPtr = allocate_new_block();
+        write_sector(directory->singleIndPtr*superbloco.blockSize, (char*) &buffer_singleIndPtr);
+        setBitmap2(1,directory->singleIndPtr, 1);
+        //update_inode(directory)
+    }
+    read_sector(directory->singleIndPtr*superbloco.blockSize, (char*) &single_indirection_pointers);
+    for(i = 0; i < 256/sizeof(DWORD); i++){
+        if(single_indirection_pointers[i] == INVALID_PTR){
+            printf("single_indirection_pointers[%d] == INVALID_PTR", i);
+            single_indirection_pointers[i] = allocate_new_block();
+            write_sector(directory->singleIndPtr*superbloco.blockSize, (char*)&single_indirection_pointers);
+            setBitmap2(1,single_indirection_pointers[i], 1);
+        }
+        read_sector(single_indirection_pointers[i]*superbloco.blockSize, (char*) &sector_of_records);
+        next_free_record = find_first_record_slot(sector_of_records);
+        if(next_free_record != -1){
+            printf("Saved in single_indirection_pointer[%d]\n",i);
+            sector_of_records[next_free_record] = new_record;
+            write_sector(single_indirection_pointers[i]*superbloco.blockSize, (char*)&sector_of_records);
+            setBitmap2(1,next_free_record, 1);
+            return 1;
+        }
+    }
+    /***********************************************************************************************************/
+    if(directory->doubleIndPtr == INVALID_PTR){
+        printf("directory->doubleIndPtr == INVALID_PTR\n");
+        directory->doubleIndPtr = allocate_new_block();
+        write_sector(directory->doubleIndPtr*superbloco.blockSize, (char*) &buffer_singleIndPtr);
+        setBitmap2(1,directory->doubleIndPtr, 1);
+        //update_inode(directory)
+    }
+    read_sector(directory->doubleIndPtr*superbloco.blockSize, (char*) &double_indirection_pointers);
+    for(i = 0; i < 256/sizeof(DWORD); i++){
+        if(double_indirection_pointers[i] == INVALID_PTR){
+            printf("double_indirection_pointers[%d] == INVALID_PTR", i);
+            double_indirection_pointers[i] = allocate_new_block();
+            write_sector(directory->doubleIndPtr*superbloco.blockSize, (char*)&double_indirection_pointers);
+            setBitmap2(1,double_indirection_pointers[i], 1);
+        }
+        if(double_indirection_pointers[i] == INVALID_PTR){
+            printf("double_indirection_pointers[i] == INVALID_PTR\n");
+            double_indirection_pointers[i] = allocate_new_block();
+            write_sector(double_indirection_pointers[i]*superbloco.blockSize, (char*) &buffer_singleIndPtr);
+            setBitmap2(1,double_indirection_pointers[i], 1);
+            //update_inode(directory)
+        }
+        read_sector(double_indirection_pointers[i]*superbloco.blockSize, (char*) &single_indirection_pointers);
+        for(j = 0; j < 256/sizeof(DWORD); j++){
+            if(single_indirection_pointers[j] == INVALID_PTR){
+                printf("single_indirection_pointers[%d] == INVALID_PTR", j);
+                single_indirection_pointers[j] = allocate_new_block();
+                write_sector(double_indirection_pointers[j]*superbloco.blockSize, (char*)&single_indirection_pointers);
+                setBitmap2(1,single_indirection_pointers[j], 1);
+            }
+            read_sector(single_indirection_pointers[j]*superbloco.blockSize, (char*) &sector_of_records);
+            next_free_record = find_first_record_slot(sector_of_records);
+            if(next_free_record != -1){
+                printf("Saved in single_indirection_pointer[%d]\n",j);
+                sector_of_records[next_free_record] = new_record;
+                write_sector(single_indirection_pointers[j]*superbloco.blockSize, (char*)&sector_of_records);
+                setBitmap2(1,next_free_record, 1);
+                return 1;
+            }
+        }
+    }
+}
+
+void updateInode(int inode, t_inode new_inode){
+    int sector, inodesPerSector;
+    BYTE buffer[256];
+    sector = (first_inode + (inode/8)) * superbloco.blockSize; // 8 is the number of inodes per sector
+    read_sector(sector, buffer);
+    memcpy(buffer+(inode % 8)*sizeof(t_inode), (char*) &new_inode, sizeof(t_inode));
+    write_sector(sector, buffer);
+}
+
 // Only creates in the root directory
 FILE2 create2 (char *filename)
 {
+    BYTE buffer[256];
     open_file* new_file;
     t_record new_record;
-    t_inode new_inode;
-    int first_free_block, first_inode, handle;
+    t_inode new_inode, directory_inode;
+    int first_free_block, first_free_inode;
     if(first_call)
         initialize();
-
-    new_record.TypeVal = TYPEVAL_REGULAR;
-    strncpy(new_record.name, filename, 58);
 
     new_inode.blocksFileSize = 0;
     new_inode.bytesFileSize = 0;
@@ -134,26 +269,25 @@ FILE2 create2 (char *filename)
     new_inode.singleIndPtr = INVALID_PTR;
     new_inode.doubleIndPtr = INVALID_PTR;
 
-    first_inode = write_inode(new_inode);
+    first_free_inode = write_inode(new_inode);
 
-    if(first_inode==-1){
-        printf("Ops\n");
-        return first_inode;
+    if(first_free_inode==-1){
+        return first_free_inode;
     }
 
-    setBitmap2 (0, first_inode, 1);
-    printf("%d\n", getBitmap2(0,first_inode));
+    new_record.TypeVal = TYPEVAL_REGULAR;
+    strncpy(new_record.name, filename, 58);
 
-    new_file = malloc(sizeof(open_file));
+    read_sector(first_inode*superbloco.blockSize, (char*) &buffer);
+    memcpy((char*) &directory_inode, buffer, sizeof(t_inode));
 
-    handle = next_free_handle();
+    printf("directory_inode = %x", directory_inode.dataPtr[0]);
 
-    new_file->current = 0;
-    new_file->inode = new_inode;
+    write_record(&directory_inode, new_record);
 
-    open_files[handle] = new_file;
+    updateInode(current_directory.inodeNumber, directory_inode);
 
-    return handle;
+    return 0;
 
 }
 
@@ -165,14 +299,28 @@ int delete2 (char *filename)
 
 FILE2 open2 (char *filename)
 {
+    BYTE bufer[256];
     if(first_call)
         initialize();
+
 }
 
 int close2 (FILE2 handle)
 {
+    int lidos;
     if(first_call)
         initialize();
+
+    if(!open_files[handle])
+        return -1;
+
+    lidos = open_files[handle]->current;
+
+    free(open_files[handle]);
+
+    open_files[handle] = NULL;
+
+    return lidos;
 }
 
 int read2 (FILE2 handle, char *buffer, int size)
