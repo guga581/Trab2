@@ -1,6 +1,6 @@
-#include <t2fs.h>
-#include <bitmap2.h>
-#include <apidisk.h>
+#include "../include/t2fs.h"
+#include "../include/bitmap2.h"
+#include "../include/apidisk.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
