@@ -18,7 +18,7 @@ CFLAGSExe=-m32 -o
 
 all: directory lib 
 
-directory:
+directory: 
 	mkdir lib -p -v
 
 lib: t2fs.o
@@ -26,6 +26,12 @@ lib: t2fs.o
 
 t2fs.o: $(SRC_DIR)t2fs.c $(INC_DIR)apidisk.h $(INC_DIR)t2fs.h
 	$(CC) $(CFLAGSObj) $(SRC_DIR)t2fs.c -Wall -o $(BIN_DIR)t2fs.o  
- 
+
+exe:
+	$(CC) $(CFLAGSExe) $(BIN_DIR)t2fs $(SRC_DIR)t2fs.c $(LIB_DIR)apidisk.o -Wall
+	#ld -m elf_i386 -o $(BIN_DIR)t2fs $(SRC_DIR)t2fs.c $(LIB_DIR)apidisk.o 
+	#-Wall 
+	 
+
 clean:
 	find $(BIN_DIR) $(LIB_DIR) $(SRC_DIR) -type f ! -name 't2fs_disk.dat' ! -name 'apidisk.o' ! -name 't2fs.c' -delete
