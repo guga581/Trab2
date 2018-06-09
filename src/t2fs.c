@@ -101,8 +101,8 @@ int descobreSetor(int inodeIndex){
 //0 -> bloco
 //1 -> inode
 //retorna bit ou -1
-int readInodeBitmap(unsigned char bitmap, int inodeIndex);
-int readInodeBitmap(unsigned char bitmap, int inodeIndex){
+int readBitmap(unsigned char bitmap, int inodeIndex);
+int readBitmap(unsigned char bitmap, int inodeIndex){
 		
 	int endInicial;
 
@@ -152,10 +152,91 @@ int readInodeBitmap(unsigned char bitmap, int inodeIndex){
 	//return 0;
 }
 
+int atualizarBlocos(unsigned char bitmap, unsigned char buffer, int inodeIndex, int setor);
+int atualizarBlocos(unsigned char bitmap, unsigned char buffer, int inodeIndex, int setor){
+
+	int endInicial;
+
+	if(bitmap == 0)
+		endInicial = endFirstBlock;
+	else if(bitmap == 1)
+		endInicial = endFirstInode;
+	else
+		return -1;
+
+	/*
+		struct t2fs_inode {
+		DWORD	blocksFileSize;	// Tamanho do arquivo expresso em quantidade de  blocos 
+		DWORD	bytesFileSize;	// Tamanho do arquivo expresso em bytes 
+		DWORD	dataPtr[2];	// Dois ponteiros diretos (little endian). Se inválido, recebe INVALID_PTR.        
+		DWORD	singleIndPtr;   // Ponteiro de indireção simples (little endian). Se inválido, recebe INVALID_PTR. 
+		DWORD	doubleIndPtr;   // Ponteiro de indireção dupla (little endian) Se inválido, recebe INVALID_PTR.    
+		DWORD	reservado[2];	// Reservado 
+		};
+	*/	
+	/*
+	struct t2fs_record {
+	BYTE    TypeVal;        // Tipo da entrada. Indica se o registro é inválido (TYPEVAL_INVALIDO), arquivo (TYPEVAL_REGULAR) ou diretório (TYPEVAL_DIRETORIO) 
+	char    name[59];       // Nome do arquivo. : string com caracteres ASCII (0x21 até 0x7A), case sensitive. 
+	DWORD   inodeNumber;    // Número do i-node (se inválido, recebe INVALID_PTR)  
+	};
+	*/
+	//memcpy( (void*)&blocoAtual[ (posicao%InodePorBlocos)*sizeof(Inode) ], (void *)&(Inode), sizeof(Inode));
+	
+	//t_inode * inode = malloc(sizeof(t_inode));
+	t_inode inode;	
+	t_record * root = malloc(sizeof(t_record));
+
+	printf("tamanho do inode é %d\n", sizeof(inode));
+	printf("tamanho da struct é %d\n\n", sizeof(t_inode));
+
+	printf("tamanho do record é %d\n", sizeof(root));
+	printf("tamanho da struct é %d\n", sizeof(t_record));
+
+	root->TypeVal = TYPEVAL_DIRETORIO;
+	strcpy(root->name, "./root");
+	root->inodeNumber = 0;
+
+	inode.blocksFileSize = sizeof(root) / superbloco.blockSize;//conferir
+	inode.bytesFileSize = sizeof(root);
+	inode.dataPtr[0] = endInicial;
+	inode.dataPtr[1] = INVALID_PTR;
+	inode.singleIndPtr = inode.doubleIndPtr = INVALID_PTR;
+
+	printf("bytesFileSize = %d\n\n", inode.bytesFileSize);
+
+	unsigned char bufferWrite[SECTOR_SIZE];
+	
+	int i;
+	for(i=0; i < SECTOR_SIZE; i++)
+		bufferWrite[i] = 0;
+
+	memcpy( (void *)&bufferWrite , (void *)&(inode), sizeof(inode));	
+	//bufferWrite = (unsigned char *)inode;
+	//int i;
+	for(i=0; i < SECTOR_SIZE; i++)
+		printf("Valor buffer[%d] = %d\n", i, bufferWrite[i]);
+
+	write_sector(endFirstInode, bufferWrite);	
+
+	//printf("nome = %s\n", bufferWrite);
+
+	////////////////////////////////////
+	//t_inode * inodeTeste = malloc(sizeof(t_inode));;
+	t_inode inodeTeste;	
+	unsigned char bufferTeste[SECTOR_SIZE];
+	read_sector(endFirstInode, bufferTeste);
+	memcpy((void *) &inodeTeste, (void *)&bufferTeste, sizeof(inodeTeste));
+
+	printf("bytesFileSize = %d\n\n", inodeTeste.bytesFileSize);
+
+	return 0;
+}
+
 //0 -> bloco
 //1 -> inode
-int writeInodeBitmap(unsigned char bitmap, unsigned char buffer, int inodeIndex);
-int writeInodeBitmap(unsigned char bitmap, unsigned char buffer, int inodeIndex){
+int writeBitmap(unsigned char bitmap, unsigned char buffer, int inodeIndex);
+int writeBitmap(unsigned char bitmap, unsigned char buffer, int inodeIndex){
 		
 	int endInicial;
 
@@ -177,25 +258,14 @@ int writeInodeBitmap(unsigned char bitmap, unsigned char buffer, int inodeIndex)
 	
 	while(!(inodeIndex < SECTOR_SIZE))			
 		inodeIndex = inodeIndex - SECTOR_SIZE;	
-		
 	
-	printf("bufferAux1 = %d\n", bufferAux[1]);	
-	bufferAux[inodeIndex] = buffer;
-		
-	printf("inodeIndex = %d\n", inodeIndex);
-	printf("buffer = %d\n", buffer);
-	printf("bufferAux = %d\n", bufferAux[inodeIndex]);	
-			
-
+	
 	if (write_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferAux) != 0){
 		return -1;
 	}
-	//atualizarCurrentInodeIndex();
-	//if(inodeIndex == currentInodeIndex)
-	//	currentInodeIndex++;
-	
-	unsigned char bufferRead[SECTOR_SIZE];
-	read_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferRead);	
+		
+	if(atualizarBlocos(bitmap, buffer, inodeIndex, setor) == -1)
+		printf("Erro ao atualizar os blocos!\n");
 
 	return 0;
 }
@@ -230,16 +300,16 @@ int initFilesAndDirectories(){
 	//	printf("dd\n");
 	
 	//bitmap, valor, endereco
-	if (writeInodeBitmap(0, 0, 4) != 0){
+	if (writeBitmap(0, 0, 4) != 0){
 		printf("Erro ao criar root!\n");
 	}
 
-	if(readInodeBitmap(1, 1) != -1)
-		printf("endereço lido = %d, valor = %d\n", 0, readInodeBitmap(1, 1)); 
+	if(readBitmap(1, 1) != -1)
+		printf("endereço lido = %d, valor = %d\n", 1, readBitmap(1, 1)); 
 	else
 		printf("Erro ronaldo!\n");
 	//debug
-	//printInodeBitmap();
+	printInodeBitmap();
 	
 	return 0;
 
