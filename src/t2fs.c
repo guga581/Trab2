@@ -152,6 +152,9 @@ int readBitmap(unsigned char bitmap, int inodeIndex){
 	//return 0;
 }
 
+/* Poderia fazer com ponteiro ou variáveis declaradas, não sei qual a melhor, copiei do Bernardo e fiz com as variaveis.
+Outra coisa que não saquei é que a area de iNodes daria que poderiamos colocar o dobro do numero de inode, ou inodes com
+duas vezes mais memória (64 bytes dai). (?) | Off-topic -> size da struct do inode: 32. Size da struct de record: 64.*/
 int atualizarBlocos(unsigned char bitmap, unsigned char buffer, int inodeIndex, int setor);
 int atualizarBlocos(unsigned char bitmap, unsigned char buffer, int inodeIndex, int setor){
 
@@ -164,71 +167,39 @@ int atualizarBlocos(unsigned char bitmap, unsigned char buffer, int inodeIndex, 
 	else
 		return -1;
 
-	/*
-		struct t2fs_inode {
-		DWORD	blocksFileSize;	// Tamanho do arquivo expresso em quantidade de  blocos 
-		DWORD	bytesFileSize;	// Tamanho do arquivo expresso em bytes 
-		DWORD	dataPtr[2];	// Dois ponteiros diretos (little endian). Se inválido, recebe INVALID_PTR.        
-		DWORD	singleIndPtr;   // Ponteiro de indireção simples (little endian). Se inválido, recebe INVALID_PTR. 
-		DWORD	doubleIndPtr;   // Ponteiro de indireção dupla (little endian) Se inválido, recebe INVALID_PTR.    
-		DWORD	reservado[2];	// Reservado 
-		};
-	*/	
-	/*
-	struct t2fs_record {
-	BYTE    TypeVal;        // Tipo da entrada. Indica se o registro é inválido (TYPEVAL_INVALIDO), arquivo (TYPEVAL_REGULAR) ou diretório (TYPEVAL_DIRETORIO) 
-	char    name[59];       // Nome do arquivo. : string com caracteres ASCII (0x21 até 0x7A), case sensitive. 
-	DWORD   inodeNumber;    // Número do i-node (se inválido, recebe INVALID_PTR)  
-	};
+	/* Solução com ponteiros. 
+	memcpy( (void*)&blocoAtual[ (posicao%InodePorBlocos)*sizeof(Inode) ], (void *)&(Inode), sizeof(Inode));
+	t_inode * inode = malloc(sizeof(t_inode));
 	*/
-	//memcpy( (void*)&blocoAtual[ (posicao%InodePorBlocos)*sizeof(Inode) ], (void *)&(Inode), sizeof(Inode));
 	
-	//t_inode * inode = malloc(sizeof(t_inode));
 	t_inode inode;	
 	t_record * root = malloc(sizeof(t_record));
 
-	printf("tamanho do inode é %d\n", sizeof(inode));
-	printf("tamanho da struct é %d\n\n", sizeof(t_inode));
+	/*printf("tamanho do inode é %d\n", sizeof(inode));printf("tamanho da struct é %d\n\n", sizeof(t_inode));
+	printf("tamanho do record é %d\n", sizeof(root));printf("tamanho da struct é %d\n", sizeof(t_record));*/
 
-	printf("tamanho do record é %d\n", sizeof(root));
-	printf("tamanho da struct é %d\n", sizeof(t_record));
-
-	root->TypeVal = TYPEVAL_DIRETORIO;
+	root->TypeVal = TYPEVAL_DIRETORIO;SS
 	strcpy(root->name, "./root");
 	root->inodeNumber = 0;
 
 	inode.blocksFileSize = sizeof(root) / superbloco.blockSize;//conferir
 	inode.bytesFileSize = sizeof(root);
-	inode.dataPtr[0] = endInicial;
+	inode.dataPtr[0] = endFirstBlock;
 	inode.dataPtr[1] = INVALID_PTR;
 	inode.singleIndPtr = inode.doubleIndPtr = INVALID_PTR;
 
-	printf("bytesFileSize = %d\n\n", inode.bytesFileSize);
-
 	unsigned char bufferWrite[SECTOR_SIZE];
 	
-	int i;
+	/*int i;
 	for(i=0; i < SECTOR_SIZE; i++)
-		bufferWrite[i] = 0;
+		bufferWrite[i] = 0;*/
 
 	memcpy( (void *)&bufferWrite , (void *)&(inode), sizeof(inode));	
-	//bufferWrite = (unsigned char *)inode;
-	//int i;
-	for(i=0; i < SECTOR_SIZE; i++)
-		printf("Valor buffer[%d] = %d\n", i, bufferWrite[i]);
+	
+	/*for(i=0; i < SECTOR_SIZE; i++)
+		printf("Valor buffer[%d] = %d\n", i, bufferWrite[i]);*/
 
 	write_sector(endFirstInode, bufferWrite);	
-
-	//printf("nome = %s\n", bufferWrite);
-
-	////////////////////////////////////
-	//t_inode * inodeTeste = malloc(sizeof(t_inode));;
-	t_inode inodeTeste;	
-	unsigned char bufferTeste[SECTOR_SIZE];
-	read_sector(endFirstInode, bufferTeste);
-	memcpy((void *) &inodeTeste, (void *)&bufferTeste, sizeof(inodeTeste));
-
-	printf("bytesFileSize = %d\n\n", inodeTeste.bytesFileSize);
 
 	return 0;
 }
