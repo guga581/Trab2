@@ -98,37 +98,48 @@ int descobreSetor(int inodeIndex){
 	return -1;	
 }
 
-int writeInodeBitmap(unsigned char buffer, int inodeIndex);
-int writeInodeBitmap(unsigned char buffer, int inodeIndex){
-	
-	//int i;
-	
+//0 -> bloco
+//1 -> inode
+//retorna bit ou -1
+int readInodeBitmap(unsigned char bitmap, int inodeIndex);
+int readInodeBitmap(unsigned char bitmap, int inodeIndex){
+		
+	int endInicial;
+
+	if(bitmap == 0)
+		endInicial = endBlockBitmap;
+	else if(bitmap == 1)
+		endInicial = endInodeBitmap;
+	else
+		return -1;
+
 	int setor = descobreSetor(inodeIndex);
 
+	while(!(inodeIndex < SECTOR_SIZE))			
+		inodeIndex = inodeIndex - SECTOR_SIZE;
+
 	unsigned char bufferAux[SECTOR_SIZE];
-	printf("setor = %d\n", setor);
+	//printf("setor = %d\n", setor);
 	
 
-	read_sector(endInodeBitmap + ((setor - 1) * SECTOR_SIZE), bufferAux);
+	if(read_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferAux) == 0)
+		return bufferAux[inodeIndex];
+	else
+		return -1;
 
 	
-	while(!(inodeIndex < SECTOR_SIZE)){	
-		printf("inodeIndex = %d\n", inodeIndex);	
-		inodeIndex = inodeIndex - SECTOR_SIZE;	
+	/*
 		
-	}
+	
 	printf("bufferAux1 = %d\n", bufferAux[1]);	
 	bufferAux[inodeIndex] = buffer;
 		
 	printf("inodeIndex = %d\n", inodeIndex);
 	printf("buffer = %d\n", buffer);
-	printf("bufferAux = %d\n", bufferAux[inodeIndex]);
-		
-	//for(i = 0; i < SECTOR_SIZE; i++){
-	//	printf("valor escrito no bufferWrite = %d, indice %d\n", bufferAux[i], i);
-	//}		
+	printf("bufferAux = %d\n", bufferAux[inodeIndex]);	
+			
 
-	if (write_sector(endInodeBitmap + ((setor - 1) * SECTOR_SIZE), bufferAux) != 0){
+	if (write_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferAux) != 0){
 		return -1;
 	}
 	//atualizarCurrentInodeIndex();
@@ -136,13 +147,55 @@ int writeInodeBitmap(unsigned char buffer, int inodeIndex){
 	//	currentInodeIndex++;
 	
 	unsigned char bufferRead[SECTOR_SIZE];
-	read_sector(endInodeBitmap + ((setor - 1) * SECTOR_SIZE), bufferRead);
+	read_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferRead);	
+	*/
+	//return 0;
+}
+
+//0 -> bloco
+//1 -> inode
+int writeInodeBitmap(unsigned char bitmap, unsigned char buffer, int inodeIndex);
+int writeInodeBitmap(unsigned char bitmap, unsigned char buffer, int inodeIndex){
+		
+	int endInicial;
+
+	if(bitmap == 0)
+		endInicial = endBlockBitmap;
+	else if(bitmap == 1)
+		endInicial = endInodeBitmap;
+	else
+		return -1;
+
+	int setor = descobreSetor(inodeIndex);
+
+	unsigned char bufferAux[SECTOR_SIZE];
+	//printf("setor = %d\n", setor);
+	
+
+	read_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferAux);
 
 	
-	//for(i = 0; i < SECTOR_SIZE; i++){
-	//	printf("valor lido  = %d, indice %d\n", bufferRead[i], i);
-	//}
+	while(!(inodeIndex < SECTOR_SIZE))			
+		inodeIndex = inodeIndex - SECTOR_SIZE;	
+		
 	
+	printf("bufferAux1 = %d\n", bufferAux[1]);	
+	bufferAux[inodeIndex] = buffer;
+		
+	printf("inodeIndex = %d\n", inodeIndex);
+	printf("buffer = %d\n", buffer);
+	printf("bufferAux = %d\n", bufferAux[inodeIndex]);	
+			
+
+	if (write_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferAux) != 0){
+		return -1;
+	}
+	//atualizarCurrentInodeIndex();
+	//if(inodeIndex == currentInodeIndex)
+	//	currentInodeIndex++;
+	
+	unsigned char bufferRead[SECTOR_SIZE];
+	read_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferRead);	
 
 	return 0;
 }
@@ -153,10 +206,10 @@ void printInodeBitmap(){
 	int i, j;
 	unsigned char buffer[SECTOR_SIZE];
 	
-	for(i = 1; i < 5; i++){
-		read_sector(endInodeBitmap + ((i - 1) * SECTOR_SIZE), buffer);
+	for(i = 1; i < 8192; i++){
+		read_sector(0 + ((i - 1) * SECTOR_SIZE), buffer);
 		for(j = 0; j < SECTOR_SIZE; j++){
-			printf("Valor: %d, endereço: %d\n", buffer[j], (endInodeBitmap + ((i - 1) * SECTOR_SIZE) + j) );
+			if(buffer[j] != 0){printf("Valor: %d, endereço: %d\n", buffer[j], (0 + ((i - 1) * SECTOR_SIZE) + j) );}
 		}
 	}
 }
@@ -171,10 +224,20 @@ int initFilesAndDirectories(){
 	strcpy(root.name, name);
 	root.inodeNumber = 0;
 	
-	if (writeInodeBitmap(1, 0) != 0){
+	//nao consegui fazer a funcao do sor funcionar...
+	//setBitmap2 (int handle, int bitNumber, int bitValue)
+	//if(setBitmap2 (0, 4, 1) == -1)
+	//	printf("dd\n");
+	
+	//bitmap, valor, endereco
+	if (writeInodeBitmap(0, 0, 4) != 0){
 		printf("Erro ao criar root!\n");
 	}
-	
+
+	if(readInodeBitmap(1, 1) != -1)
+		printf("endereço lido = %d, valor = %d\n", 0, readInodeBitmap(1, 1)); 
+	else
+		printf("Erro ronaldo!\n");
 	//debug
 	//printInodeBitmap();
 	
