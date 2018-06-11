@@ -61,6 +61,17 @@ void printSuperBloco(){
 
 }
 
+void printBuffer(unsigned char * buffer);
+void printBuffer(unsigned char * buffer){
+	
+	printf("*****DEBUGANDO BUFFER*****\n");
+	
+	int j;	
+	for(j = 0; j < SECTOR_SIZE; j++){
+			if(buffer[j] != 0){printf("Valor: %d, endereço: buffer[%d]\n", buffer[j], (j) );}
+		}
+}
+
 int initSuperBloco();
 int initSuperBloco(){
 
@@ -128,28 +139,28 @@ int readBitmap(unsigned char bitmap, int inodeIndex){
 		return -1;
 
 	
-	/*
-		
 	
-	printf("bufferAux1 = %d\n", bufferAux[1]);	
-	bufferAux[inodeIndex] = buffer;
-		
-	printf("inodeIndex = %d\n", inodeIndex);
-	printf("buffer = %d\n", buffer);
-	printf("bufferAux = %d\n", bufferAux[inodeIndex]);	
-			
-
-	if (write_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferAux) != 0){
-		return -1;
-	}
-	//atualizarCurrentInodeIndex();
-	//if(inodeIndex == currentInodeIndex)
-	//	currentInodeIndex++;
-	
-	unsigned char bufferRead[SECTOR_SIZE];
-	read_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferRead);	
-	*/
 	//return 0;
+}
+
+int getFirstFreeInode(){
+	
+	int i,j;
+	unsigned char buffer[SECTOR_SIZE];
+	
+	for(i = 0; i < superbloco.freeInodeBitmapSize * superbloco.blockSize; i++){
+		if(read_sector(endInodeBitmap + (i * SECTOR_SIZE), buffer) == 0){
+			for(j = 0; j < SECTOR_SIZE; j++){
+				printf("Endereço testado = %d, valor lido = %d\n", endInodeBitmap + (i * SECTOR_SIZE) + j, buffer[j]);				
+				if(buffer[j] == 0)
+					return j;
+			}	
+		}		
+		
+	}
+	printf("\n\n");
+
+	return -1;
 }
 
 /* Poderia fazer com ponteiro ou variáveis declaradas, não sei qual a melhor, copiei do Bernardo e fiz com as variaveis.
@@ -178,7 +189,7 @@ int atualizarBlocos(unsigned char bitmap, unsigned char buffer, int inodeIndex, 
 	/*printf("tamanho do inode é %d\n", sizeof(inode));printf("tamanho da struct é %d\n\n", sizeof(t_inode));
 	printf("tamanho do record é %d\n", sizeof(root));printf("tamanho da struct é %d\n", sizeof(t_record));*/
 
-	root->TypeVal = TYPEVAL_DIRETORIO;SS
+	root->TypeVal = TYPEVAL_DIRETORIO;
 	strcpy(root->name, "./root");
 	root->inodeNumber = 0;
 
@@ -188,19 +199,47 @@ int atualizarBlocos(unsigned char bitmap, unsigned char buffer, int inodeIndex, 
 	inode.dataPtr[1] = INVALID_PTR;
 	inode.singleIndPtr = inode.doubleIndPtr = INVALID_PTR;
 
+	/*
+		Como só escreve num setor inteiro, tem que fazer essa mao ai pra dar certo
+	*/
+
 	unsigned char bufferWrite[SECTOR_SIZE];
 	
-	/*int i;
+	int i;
 	for(i=0; i < SECTOR_SIZE; i++)
-		bufferWrite[i] = 0;*/
+		bufferWrite[i] = 0;
 
-	memcpy( (void *)&bufferWrite , (void *)&(inode), sizeof(inode));	
+	int firstFreeInode = ((getFirstFreeInode() * sizeof(inode)) + endFirstInode);
+	printf("FirstFreeInode = %d\n\n", firstFreeInode);
+
+	if(firstFreeInode % SECTOR_SIZE == 0){
+		read_sector(firstFreeInode, bufferWrite);
+		memcpy( (void *)&bufferWrite , (void *)&(inode), sizeof(inode));
+		write_sector(firstFreeInode, bufferWrite);
+		printf("Inode escrito com resto 0\n\n");
+	}
+	else{
+		int firstFreeInodeAux = firstFreeInode;
+		
+		while(firstFreeInodeAux % SECTOR_SIZE != 0)
+			firstFreeInodeAux--;
+		
+		printf("firstFreeInodeAux = %d\n\n", firstFreeInodeAux);
+		
+		read_sector(firstFreeInodeAux, bufferWrite);
+
+		//printBuffer(bufferWrite);	
+
+		memcpy( (void *)&bufferWrite + sizeof(inode), (void *)&(inode), sizeof(inode));	
+
+		//printBuffer(bufferWrite);	
+
+		write_sector(firstFreeInodeAux, bufferWrite);
+		printf("Inode escrito com resto diferente de 0\n\n");
+	}
+
+	printBuffer(bufferWrite);
 	
-	/*for(i=0; i < SECTOR_SIZE; i++)
-		printf("Valor buffer[%d] = %d\n", i, bufferWrite[i]);*/
-
-	write_sector(endFirstInode, bufferWrite);	
-
 	return 0;
 }
 
@@ -230,7 +269,11 @@ int writeBitmap(unsigned char bitmap, unsigned char buffer, int inodeIndex){
 	while(!(inodeIndex < SECTOR_SIZE))			
 		inodeIndex = inodeIndex - SECTOR_SIZE;	
 	
+	bufferAux[inodeIndex] = buffer;
+
+	//printf("Debug writebitmap: escrever no setor = %d", write_sector(endInicial + ((setor - 1) * SECTOR_SIZE));	
 	
+
 	if (write_sector(endInicial + ((setor - 1) * SECTOR_SIZE), bufferAux) != 0){
 		return -1;
 	}
@@ -253,6 +296,8 @@ void printInodeBitmap(){
 			if(buffer[j] != 0){printf("Valor: %d, endereço: %d\n", buffer[j], (0 + ((i - 1) * SECTOR_SIZE) + j) );}
 		}
 	}
+
+	//printf();
 }
 
 
@@ -271,7 +316,7 @@ int initFilesAndDirectories(){
 	//	printf("dd\n");
 	
 	//bitmap, valor, endereco
-	if (writeBitmap(0, 0, 4) != 0){
+	if (writeBitmap(1, 1, 0) != 0){
 		printf("Erro ao criar root!\n");
 	}
 
@@ -323,7 +368,7 @@ int initVarAuxiliares(){
 	printf("\nendBlockBitmap = %d\n", endBlockBitmap);
 	printf("endInodeBitmap = %d\n", endInodeBitmap);
 	printf("endFirstInode = %d\n", endFirstInode);
-	printf("endFirstBlock = %d\n", endFirstBlock);
+	printf("endFirstBlock = %d\n\n", endFirstBlock);
 
 	return 0;
 
